@@ -13,18 +13,21 @@ import (
 )
 
 var (
-	versionsMap    = make(map[string]int32)
-	applicationMap = make(map[string]string)
+	versionsMap            = make(map[string]int32)
+	applicationPipelineMap = make(map[string]string)
 )
 
 const (
 	BaseApplicationName        = "duxinglangzi_application"
-	baseApplicationProfileName = "pipeline_config"
+	BaseApplicationProfileName = "pipeline_config"
+	LargeCycle                 = 300
+	SmallCycle                 = 10
+	Cycle                      = 12
 )
 
 func main() {
 	
-	log.Println("测试一下输出")
+	log.Println("启动小程序,开始检查app config配置内容...")
 	
 	// defaultConfig, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"),
 	// 	config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("aaaa", "bb", "")))
@@ -45,14 +48,25 @@ func main() {
 		// filterBaseApplication(applications, appConfigClient) // 加载最新的项目配置
 		for _, item := range applications.Items {
 			// execCheckApplication(&item, appConfigClient, codepipelineClient)
-			log.Println("name:", *item.Name, " id:", *item.Id)
+			log.Println("处理应用名称:", *item.Name, " , id:", *item.Id)
 		}
-		time.Sleep(time.Second * time.Duration(6))
+		log.Println("本轮检查应用程序数量:", len(applications.Items))
+		doSleep()
 		i++
 		if i > 5 {
 			log.Println("关闭了.....")
 			break
 		}
+	}
+}
+
+func doSleep() {
+	// init the shanghai loc
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	if time.Now().In(loc).Hour() < Cycle {
+		time.Sleep(time.Second * time.Duration(LargeCycle))
+	} else {
+		time.Sleep(time.Second * time.Duration(SmallCycle))
 	}
 }
 
@@ -76,13 +90,13 @@ func execCheckApplication(application *types.Application, client *appconfig.Clie
 		if v, ok := versionsMap[*item.Id]; ok {
 			if *currentVersion > v {
 				versionsMap[*item.Id] = *currentVersion
-				if appName, okk := applicationMap[*item.Id]; okk {
+				if appName, okk := applicationPipelineMap[*item.Id]; okk {
 					pipelineClient.StartPipelineExecution(context.TODO(), &codepipeline.StartPipelineExecutionInput{
 						Name: &appName,
 					})
+					log.Println("重启Pipeline, 名称: ", appName)
 				}
 			}
-			
 		} else {
 			versionsMap[*item.Id] = *currentVersion
 		}
@@ -110,7 +124,7 @@ func filterBaseApplication(applications *appconfig.ListApplicationsOutput, clien
 	}
 	currentProfileId := ""
 	for _, item := range profiles.Items {
-		if *item.Name == baseApplicationProfileName {
+		if *item.Name == BaseApplicationProfileName {
 			currentProfileId = *item.Id
 		}
 	}
@@ -130,5 +144,5 @@ func filterBaseApplication(applications *appconfig.ListApplicationsOutput, clien
 	}
 	configuration, _ := client.GetHostedConfigurationVersion(context.TODO(),
 		&appconfig.GetHostedConfigurationVersionInput{ApplicationId: &applicationId, ConfigurationProfileId: &currentProfileId, VersionNumber: *currentVersion})
-	json.Unmarshal(configuration.Content, &applicationMap)
+	json.Unmarshal(configuration.Content, &applicationPipelineMap)
 }
